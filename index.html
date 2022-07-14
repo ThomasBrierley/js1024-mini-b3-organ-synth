@@ -1,0 +1,194 @@
+<canvas id=C style=background:#222><script>
+
+/*
+
+Tonewheel organs can be considered the earliest kind of additive synthesizers.
+Pressing a single key causes a bunch of different frequency tonewheels to play
+at the same time, "adding" together to give the organ's unique sound.  Organ
+drawbars correspond to these frequencies and adjust how loud each frequency is
+much like an equalizer, except unlike an equalizer the frequency is relative to
+the note played rather than absolute.
+
+A limited number of tonewheels can physically fit inside of an organ, and each
+has a fixed frequency. For this reason drawbars correspond to neighbouring notes
+rather than exact harmonics which allow the most efficient use of available
+tonewheels - many of the idealised drawbar harmonics are exactly the same as
+note frequencies anyway, but others are slightly off. As far I understand this
+difference causes a slight dissonance that is part of the unique sound.
+
+This essentially means there is one physical tonewheel for each note, and when
+you play one key, you are actually playing a big chord of relative notes... When
+you play multiple keys at once those chords start to overlap and some underlying
+tonewheels will be shared, but louder.  This is an important optimisation, even
+though it's separated by a century of technology it's still relevant to software
+which can only simulate a limited number of oscillators simultaneously.
+
+The arrays F[] and A[] define the drawbars, and for the above reasons F[]
+actually corresponds to relative notes rather than accurate harmonic orders.
+A[] are the amplitudes which are also the drawbar states.
+
+The function O() returns the global oscillator for a given note from a shared
+pool, allowing oscillators to be shared between keys just like tonewheels. It
+dynamically creates and destroys them as needed.
+
+The other significant element of this organ's sound is the Leslie Speaker...
+Essentially a spinning speaker in a box which causes three distinct effects in
+the resulting waveform: tremolo (amplitude modulation from changing proximity),
+vibrato (frequency modulation from Doppler shift) and phase shifting (due to
+Doppler shifted waves propagating around the cabinet and recombining).  An
+authentic simulation is too demanding for a 1k demo, however the most prominent
+effects can be mimicked more abstractly:
+
+For vibrato, a global LFO (low frequency oscillator) modulates the frequency of
+all notes by 1/5th of a note at 5Hz.  For phase shifting the vibrato is extended
+to 2 global LFOs with a ~1 Hz separation, and the harmonics are duplicated with
+one LFO controlling each set. The slight difference in LFO frequency will cause
+the two oscillators for each harmonic to gradually slide in and out of phase.
+These are then mixed together to produce the phase shifting waveform, with
+slight separation to produce a stereo effect.
+
+An accidental side effect of the 2nd set of harmonics is a chorus effect,
+because they needed to be detuned slightly to appear as distinct notes to the
+oscillator pool. It turns out Hammond use the same principle, adding a 2nd set
+of slightly detuned tonewheels for their chorus effect, so this was retained.
+
+Finally, some Leslie Speakers include an electronic reverb effect. The two
+general approaches to reverb in web audio are convolver nodes, which are too
+slow for real-time; and delay line buffers, which are too complex.  So This demo
+uses a simpler but less physically correct approach by pretending reverb is part
+of the source sound. The standard ADSR envelope has been extended to include a
+final decay stage representing the long reverb tail that emerges after a source
+stops playing.  This only emulates non-cumulative reverb for keys that have
+stopped playing, which tends to be where the effect is most prominent.
+
+*/
+
+// Harmonic Frequencies
+F = [-12.2,-12,  7,  0, 12, 19, 24, 28, 31, 36];
+
+// Harmonic Amplitudes
+A = [    8,  8,  8,  8,  4,  2,  2,  2,  4,  4];
+
+// Shared Oscillator Pool
+X = new AudioContext(O = (n, i = 0) => X[n] || (
+	X[n] = X.createOscillator(),
+	X[n].frequency.value = 440*2**(n/12),
+	X[n].a = _ => i++ || X[n].start(),
+	X[n].r = _ => --i || X[n].stop(X[n]=0),
+	X[n]
+));
+
+// Master
+M = X.createChannelMerger(2);
+M.connect(X.destination);
+
+// Left LFO
+L =
+g = X.createGain();
+g.gain.value = 20;
+o = O(-74);
+o.connect(g);
+o.a();
+
+// Right LFO
+R =
+g = X.createGain();
+g.gain.value = 20;
+o = O(-77);
+o.connect(g);
+o.a();
+
+(onkeydown = onkeyup = e => {
+	i = 'zsxdcvgbhnjmq2w3er5t6y7ui9o0p[=]'.indexOf(e.key);
+	/**
+	 * Audio
+	 */
+	for (p = i+1 && O[i] != e.type[5] && 20; p--;) {
+		O[i] = e.type[5];
+		// partial chan
+		c = p<10;
+		// partial init
+		g = M[i<<8|p] || (
+			l =
+			g = X.createGain(),
+			g.gain.value = c/5+.4,
+			g.connect(M, 0, 0),
+			r =
+			g = X.createGain(),
+			g.gain.value = .6-c/5,
+			g.connect(M, 0, 1),
+			M[i<<8|p] =
+			g = X.createGain(),
+			g.gain.value = 0,
+			g.connect(l),
+			g.connect(r),
+			g
+		);
+		// partial env
+		g.gain.cancelScheduledValues(X.currentTime);
+		g.gain.setValueAtTime(g.gain.value, X.currentTime);
+		g.gain.linearRampToValueAtTime(
+			A[p%10]/80    * (O[i] ? 1    : A[17]/128),
+			X.currentTime + (O[i] ? .003 : .1       )
+		);
+		g.gain.linearRampToValueAtTime(
+			A[p%10]/80    * (O[i] ? .8   : 0        ),
+			X.currentTime + (O[i] ? .1   : 4        )
+		);
+		// partial osc
+		o = O(F[p%10]+i-21+c/12);
+		o.connect(g);
+		(c?L:R).connect(o.detune);
+		O[i] ? o.a() : setTimeout(o => o.r(), 4e3, o);
+	}
+	/**
+	 * Video
+	 */
+	C.width |= D = C.getContext('2d');
+	// draw bars
+	for (i = 10; i--;) {
+		x = i||17;
+		D.fillStyle = '#888';
+		D.fillRect(
+			2 + 16*x,
+			0,
+			8,
+			4*A[x] + 12
+		);
+		D.fillStyle = '#333';
+		D.fillRect(
+			2 + 16*x,
+			0,
+			8,
+			4*A[x]
+		);
+	}
+	// white keys
+	for (i = 29; i--;) {
+		x = i + (i/12<<1) + (i%12>4);
+		z = !!O[i];
+		D.fillStyle = '#fff';
+		D.fillRect(
+			15 + 2*z + 8*x,
+			80,
+			x&1^1 && 14 - 2*z,
+			56 + 4*z
+		);
+	}
+	// black keys
+	for (i = 29; i--;) {
+		x = i + (i/12<<1) + (i%12>4);
+		z = !!O[i];
+		D.fillStyle = '#000';
+		D.fillRect(
+			18 + 8*x,
+			80,
+			x&1 && 8 - z,
+			32
+		);
+	}
+})(A[17] = 2);
+
+onmousemove = e => e.y < 54 && onkeyup(A[e.x-8>>4] = e.y/6|0);
+
+</script>
