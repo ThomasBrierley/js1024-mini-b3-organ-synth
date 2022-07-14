@@ -1,0 +1,35 @@
+Mini-B3 Organ Synth
+===================
+
+A JS-1024 2022 submission by tomxor (Thomas Brierley).
+
+An organ synthesiser in 1024 bytes of HTML and JavaScript which attempts to
+model a Hammond B3 tonewheel organ.
+
+It can be played in real-time in the browser with good latency using an ordinary
+computer keyboard (key map below).  The standard 9 harmonic drawbars and a
+reverb effect switch are included on screen and can be adjusted using the mouse.
+It's usually best to zoom the page a bit to your preference first using ctrl+.
+
+                        ┌─────────────────────────────┐
+                        │                             │
+                        │    . 2 3 . 5 6 7 . 9 0  ┌───┼──── Upper
+                 C4 ────┼───► q w e r t y u i o p │   │
+                        │     . s d . g h j . . .  ┌──┼──── Lower
+                 C3 ────┼────► z x c v b n m . . . │  │
+                        │                             │
+                        └─────────────────────────────┘
+
+It uses additive synthesis to model the tonewheel source sounds, using the same
+9 harmonics of a Hammond organ.  It also uses the closest note rather than
+idealistic harmonics just like a real tonewheel organ for an accurate sound and
+a more efficient emulation.  A chorus effect is implemented via a 2nd duplicate
+set of detuned harmonics, again just like a real tonewheel organ.
+
+For the Leslie speaker commonly paired with these organs, a less physically
+accurate emulation is used for simplicity: The vibrato and phase shifting effect
+are emulated in combination using LFOs at the source end, which produces a
+fairly believable effect but with too much regularity.  This is permanently
+stuck in the "tremolo" mode since there is no space for a switch.
+
+More detailed background and implementation overview can be found in index.html
